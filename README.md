@@ -5,7 +5,7 @@
 
 VS Code 扩展，监控智谱 AI (BigModel) API Key 的使用量，在状态栏实时显示多维度配额进度（5 小时 / 每周 / MCP 月度），支持自定义模板和 Tooltip 详情。
 
-![demo](https://github.com/showlotus/Ti18n/raw/main/res/demo.png)
+![demo](https://github.com/showlotus/glm-usage/blob/main/res/demo.png?raw=true)
 
 ## 功能特性
 
