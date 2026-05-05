@@ -5,6 +5,8 @@
 
 VS Code 扩展，监控智谱 AI (BigModel) API Key 的使用量，在状态栏实时显示多维度配额进度（5 小时 / 每周 / MCP 月度），支持自定义模板和 Tooltip 详情。
 
+![demo](https://github.com/showlotus/Ti18n/raw/main/res/demo.png)
+
 ## 功能特性
 
 - **多维度配额监控** — 状态栏同时显示每 5 小时、每周、MCP 月度三个窗口的使用百分比，支持自定义模板
@@ -41,35 +43,35 @@ code --install-extension glm-usage-0.0.2.vsix
 
 ### 命令
 
-| 命令 | 说明 |
-|------|------|
-| `GLM Usage: Set API Key` | 设置 API Key |
-| `GLM Usage: Refresh Usage` | 手动刷新使用量 |
+| 命令                        | 说明                 |
+| --------------------------- | -------------------- |
+| `GLM Usage: Set API Key`    | 设置 API Key         |
+| `GLM Usage: Refresh Usage`  | 手动刷新使用量       |
 | `GLM Usage: Delete API Key` | 删除已保存的 API Key |
 
 ### 配置
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `glmUsage.apiKey` | `""` | GLM API Key（支持 Settings Sync 跨设备同步） |
-| `glmUsage.statusBarTemplate` | `"GLM: 每 5 小时 - ${HOURLY_PERCENT}% \| 每周 - ${WEEKLY_PERCENT}%"` | 状态栏显示模板 |
-| `glmUsage.refreshInterval` | `10` | 自动刷新间隔（分钟） |
+| 配置项                       | 默认值                                                               | 说明                                         |
+| ---------------------------- | -------------------------------------------------------------------- | -------------------------------------------- |
+| `glmUsage.apiKey`            | `""`                                                                 | GLM API Key（支持 Settings Sync 跨设备同步） |
+| `glmUsage.statusBarTemplate` | `"GLM: 每 5 小时 - ${HOURLY_PERCENT}% \| 每周 - ${WEEKLY_PERCENT}%"` | 状态栏显示模板                               |
+| `glmUsage.refreshInterval`   | `10`                                                                 | 自动刷新间隔（分钟）                         |
 
 ### 模板变量
 
 状态栏模板支持以下变量：
 
-| 变量 | 说明 |
-|------|------|
+| 变量                | 说明                |
+| ------------------- | ------------------- |
 | `${HOURLY_PERCENT}` | 每 5 小时使用百分比 |
-| `${WEEKLY_PERCENT}` | 每周使用百分比 |
-| `${MCP_PERCENT}` | MCP 月度使用百分比 |
-| `${HOURLY_RESET}` | 每 5 小时重置时间 |
-| `${WEEKLY_RESET}` | 每周重置时间 |
-| `${MCP_RESET}` | MCP 月度重置时间 |
-| `${HOURLY_BAR}` | 每 5 小时进度条 |
-| `${WEEKLY_BAR}` | 每周进度条 |
-| `${MCP_BAR}` | MCP 月度进度条 |
+| `${WEEKLY_PERCENT}` | 每周使用百分比      |
+| `${MCP_PERCENT}`    | MCP 月度使用百分比  |
+| `${HOURLY_RESET}`   | 每 5 小时重置时间   |
+| `${WEEKLY_RESET}`   | 每周重置时间        |
+| `${MCP_RESET}`      | MCP 月度重置时间    |
+| `${HOURLY_BAR}`     | 每 5 小时进度条     |
+| `${WEEKLY_BAR}`     | 每周进度条          |
+| `${MCP_BAR}`        | MCP 月度进度条      |
 
 ## 状态栏
 
@@ -92,18 +94,18 @@ MCP 每月额度（重置于 06/01 00:00)
 ██░░░░░░░░░░ 已使用 15%
 ```
 
-| 颜色 | 条件 |
-|------|------|
-| 绿色 | 使用量 < 70% |
+| 颜色 | 条件             |
+| ---- | ---------------- |
+| 绿色 | 使用量 < 70%     |
 | 黄色 | 使用量 70% ~ 89% |
-| 红色 | 使用量 >= 90% |
+| 红色 | 使用量 >= 90%    |
 
 ## API 端点
 
 扩展调用以下智谱 AI 开放平台接口：
 
-| 接口 | 用途 |
-|------|------|
+| 接口                             | 用途         |
+| -------------------------------- | ------------ |
 | `/api/monitor/usage/quota/limit` | 查询配额限制 |
 
 ## 项目结构
