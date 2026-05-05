@@ -1,69 +1,99 @@
 import { TokenLimit } from './apiClient';
 
-export interface QuotaStatus {
+/** 单个窗口的配额数据 */
+export interface WindowQuota {
     percentage: number;
-    remainingTime: string;
-    progressBar: string;
-    color: string;
     nextResetTime: number;
 }
 
-export function parseQuotaStatus(data: { limits: TokenLimit[] }): QuotaStatus | null {
-    const tokenLimits = data.limits.filter(l => l.type === 'TOKENS_LIMIT');
+/** 包含 5h 窗口和周窗口的完整配额状态 */
+export interface QuotaStatus {
+    level: string;
+    hourly: WindowQuota;
+    weekly: WindowQuota;
+    mcp: WindowQuota;
+}
+
+/** 从 API 返回的 limits 中提取完整配额状态 */
+export function parseQuotaStatus(data: { level: string; limits: TokenLimit[] }): QuotaStatus | null {
+    const tokenLimits = data.limits
+        .filter(l => l.type === 'TOKENS_LIMIT')
+        .sort((a, b) => a.nextResetTime - b.nextResetTime);
+
     if (tokenLimits.length === 0) {
         return null;
     }
 
-    const currentWindow = tokenLimits.reduce((prev, curr) =>
-        curr.nextResetTime < prev.nextResetTime ? curr : prev
-    );
+    const hourly: WindowQuota = {
+        percentage: tokenLimits[0].percentage,
+        nextResetTime: tokenLimits[0].nextResetTime,
+    };
 
-    const percentage = currentWindow.percentage;
-    const remainingTime = formatRemainingTime(currentWindow.nextResetTime);
-    const progressBar = formatProgressBar(percentage);
-    const color = getStatusColor(percentage);
+    const weekly: WindowQuota = tokenLimits.length > 1
+        ? { percentage: tokenLimits[tokenLimits.length - 1].percentage, nextResetTime: tokenLimits[tokenLimits.length - 1].nextResetTime }
+        : { percentage: -1, nextResetTime: 0 };
 
-    return { percentage, remainingTime, progressBar, color, nextResetTime: currentWindow.nextResetTime };
+    const timeLimit = data.limits.find(l => l.type === 'TIME_LIMIT');
+
+    return {
+        level: data.level,
+        hourly,
+        weekly,
+        mcp: {
+            percentage: timeLimit ? timeLimit.percentage : -1,
+            nextResetTime: timeLimit ? timeLimit.nextResetTime : 0,
+        },
+    };
 }
 
-export function formatProgressBar(percentage: number, width: number = 12): string {
+/** 将时间戳格式化为重置时间点，同一天显示 HH:mm，跨天显示 MM/dd HH:mm */
+export function formatResetTime(timestampMs: number): string {
+    if (timestampMs <= 0) {
+        return '--';
+    }
+    const date = new Date(timestampMs);
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+    if (date.toDateString() === now.toDateString()) {
+        return time;
+    }
+    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${time}`;
+}
+
+/** 生成可视化进度条 */
+function formatProgressBar(percentage: number, width: number = 12): string {
+    if (percentage < 0) {
+        return '--';
+    }
     const filled = Math.round((percentage / 100) * width);
     const actualFilled = percentage > 0 && filled === 0 ? 1 : filled;
     const empty = width - actualFilled;
-    return '\u2588'.repeat(actualFilled) + '\u2591'.repeat(empty);
+    return '█'.repeat(actualFilled) + '░'.repeat(empty);
 }
 
-export function formatRemainingTime(timestampMs: number): string {
-    const nowMs = Date.now();
-    const remainingMs = timestampMs - nowMs;
-    if (remainingMs <= 0) {
-        return '即将重置';
-    }
-    const remainingSeconds = Math.floor(remainingMs / 1000);
-    let hours = Math.floor(remainingSeconds / 3600);
-    const minutes = Math.floor((remainingSeconds % 3600) / 60);
+/** 将模板字符串中的变量替换为实际值 */
+export function renderTemplate(template: string, status: QuotaStatus): string {
+    const isWeeklyValid = status.weekly.percentage >= 0;
+    const isMcpValid = status.mcp.percentage >= 0;
+    const replacements: Record<string, string> = {
+        'HOURLY_PERCENT': status.hourly.percentage.toString(),
+        'WEEKLY_PERCENT': isWeeklyValid ? status.weekly.percentage.toString() : '--',
+        'MCP_PERCENT': isMcpValid ? status.mcp.percentage.toString() : '--',
+        'HOURLY_RESET': formatResetTime(status.hourly.nextResetTime),
+        'WEEKLY_RESET': isWeeklyValid ? formatResetTime(status.weekly.nextResetTime) : '--',
+        'MCP_RESET': isMcpValid ? formatResetTime(status.mcp.nextResetTime) : '--',
+        'HOURLY_BAR': formatProgressBar(status.hourly.percentage),
+        'WEEKLY_BAR': isWeeklyValid ? formatProgressBar(status.weekly.percentage) : '--',
+        'MCP_BAR': isMcpValid ? formatProgressBar(status.mcp.percentage) : '--',
+    };
 
-    if (hours >= 24) {
-        const days = Math.floor(hours / 24);
-        hours = hours % 24;
-        if (hours > 0) {
-            return `${days}天${hours}h${minutes}m后重置`;
-        }
-        return `${days}天后重置`;
-    } else if (hours > 0) {
-        return `${hours}h${minutes}m后重置`;
-    } else {
-        return `${minutes}m后重置`;
+    let result = template;
+    for (const [key, value] of Object.entries(replacements)) {
+        result = result.split(`\${${key}}`).join(value);
     }
-}
-
-export function getStatusColor(percentage: number): 'green' | 'yellow' | 'red' {
-    if (percentage >= 90) {
-        return 'red';
-    } else if (percentage >= 70) {
-        return 'yellow';
-    }
-    return 'green';
+    return result;
 }
 
 export function formatNumber(num: number): string {

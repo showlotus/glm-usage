@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getQuotaLimit, getModelUsage, getToolUsage, TokenLimit } from './apiClient';
-import { formatProgressBar, formatRemainingTime, formatNumber, getStatusColor } from './dataParser';
+import { formatNumber } from './dataParser';
 import { getKey, setKey, deleteKey as deleteStoredKey } from './keyStorage';
 import { runSpeedTest, DEFAULT_MODELS, SpeedTestResult, CONCURRENCY_OPTIONS } from './speedTest';
 
@@ -49,7 +49,7 @@ export async function showUsageDetails(context: vscode.ExtensionContext, apiKey?
         if (apiKey) {
             await loadUsageData(apiKey, currentTimeRange);
         } else {
-            const currentInterval = vscode.workspace.getConfiguration('glmKeyMonitor').get<number>('refreshInterval', 10);
+            const currentInterval = vscode.workspace.getConfiguration('glmUsage').get<number>('refreshInterval', 10);
             currentPanel.webview.html = getNoKeyHtml(currentInterval);
         }
     } else {
@@ -93,7 +93,7 @@ export async function showUsageDetails(context: vscode.ExtensionContext, apiKey?
                     await setKey(panelContext, input.trim());
                     vscode.window.showInformationMessage('GLM API Key 已保存');
                     await loadUsageData(input.trim(), currentTimeRange);
-                    vscode.commands.executeCommand('glmKeyMonitor.refresh');
+                    vscode.commands.executeCommand('glmUsage.refresh');
                 }
             } else if (msg.command === 'deleteKey') {
                 const confirm = await vscode.window.showWarningMessage(
@@ -105,14 +105,14 @@ export async function showUsageDetails(context: vscode.ExtensionContext, apiKey?
                     await deleteStoredKey(panelContext);
                     currentApiKey = undefined;
                     vscode.window.showInformationMessage('GLM API Key 已删除');
-                    vscode.commands.executeCommand('glmKeyMonitor.clearStatus');
+                    vscode.commands.executeCommand('glmUsage.clearStatus');
                     if (currentPanel) {
                         currentPanel.dispose();
                     }
                 }
             } else if (msg.command === 'setInterval') {
                 const minutes = msg.value as number;
-                const config = vscode.workspace.getConfiguration('glmKeyMonitor');
+                const config = vscode.workspace.getConfiguration('glmUsage');
                 await config.update('refreshInterval', minutes, vscode.ConfigurationTarget.Global);
                 vscode.window.showInformationMessage(`自动刷新间隔已设置为 ${minutes} 分钟`);
             } else if (msg.command === 'setTimeRange') {
@@ -186,7 +186,7 @@ export async function showUsageDetails(context: vscode.ExtensionContext, apiKey?
         if (apiKey) {
             await loadUsageData(apiKey, currentTimeRange);
         } else {
-            const currentInterval = vscode.workspace.getConfiguration('glmKeyMonitor').get<number>('refreshInterval', 10);
+            const currentInterval = vscode.workspace.getConfiguration('glmUsage').get<number>('refreshInterval', 10);
             currentPanel.webview.html = getNoKeyHtml(currentInterval);
         }
     }
@@ -195,7 +195,7 @@ export async function showUsageDetails(context: vscode.ExtensionContext, apiKey?
 async function loadUsageData(apiKey: string, timeRange: number = 24): Promise<void> {
     if (!currentPanel) { return; }
 
-    const currentInterval = vscode.workspace.getConfiguration('glmKeyMonitor').get<number>('refreshInterval', 10);
+    const currentInterval = vscode.workspace.getConfiguration('glmUsage').get<number>('refreshInterval', 10);
     currentPanel.webview.html = getLoadingHtml(currentInterval, timeRange);
 
     try {
@@ -222,8 +222,28 @@ async function loadUsageData(apiKey: string, timeRange: number = 24): Promise<vo
 // ==================== HTML 生成函数 ====================
 
 function getBarColorClass(pct: number): string {
-    const color = getStatusColor(pct);
-    return color === 'red' ? 'bar-red' : color === 'yellow' ? 'bar-yellow' : 'bar-green';
+    if (pct >= 90) { return 'bar-red'; }
+    if (pct >= 70) { return 'bar-yellow'; }
+    return 'bar-green';
+}
+
+/** 生成可视化进度条 */
+function progressBar(percentage: number, width: number = 12): string {
+    const filled = Math.round((percentage / 100) * width);
+    const actualFilled = percentage > 0 && filled === 0 ? 1 : filled;
+    const empty = width - actualFilled;
+    return '█'.repeat(actualFilled) + '░'.repeat(empty);
+}
+
+/** 将时间戳格式化为重置时间点 */
+function resetTimeStr(timestampMs: number): string {
+    if (timestampMs <= 0) { return '--'; }
+    const date = new Date(timestampMs);
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    if (date.toDateString() === now.toDateString()) { return time; }
+    return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${time}`;
 }
 
 function maskKey(key?: string): string {
@@ -472,7 +492,7 @@ function generateReportHtml(
 
             html += `<h3>Token 使用量 (5小时窗口)</h3>`;
             html += `<div class="bar-container"><div class="bar-fill ${barColor}" style="width:${Math.min(pct, 100)}%"></div></div>`;
-            html += `<p>${formatProgressBar(pct)} ${pct}% | ${formatRemainingTime(current.nextResetTime)}</p>`;
+            html += `<p>${progressBar(pct)} ${pct}% | 重置于 ${resetTimeStr(current.nextResetTime)}</p>`;
         }
 
         for (const limit of limits) {
@@ -481,7 +501,7 @@ function generateReportHtml(
                 const barColor = getBarColorClass(pct);
                 html += `<h3>MCP 使用量 (月度)</h3>`;
                 html += `<div class="bar-container"><div class="bar-fill ${barColor}" style="width:${Math.min(pct, 100)}%"></div></div>`;
-                html += `<p>${formatProgressBar(pct)} ${pct}%</p>`;
+                html += `<p>${progressBar(pct)} ${pct}%</p>`;
                 if (limit.usageDetails) {
                     html += `<table><tr><th>工具</th><th>使用次数</th></tr>`;
                     for (const d of limit.usageDetails) {

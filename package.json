@@ -1,18 +1,18 @@
 {
-  "name": "glm-monitor",
-  "displayName": "GLM Monitor",
+  "name": "glm-usage",
+  "displayName": "GLM Usage",
   "description": "监控智谱 AI (BigModel) API Key 的使用量，在状态栏显示 Token 剩余百分比和重置时间",
   "version": "0.0.2",
-  "publisher": "LaughSmiles",
+  "publisher": "showlotus",
   "icon": "icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LaughSmiles/glm-key-monitor"
+    "url": "https://github.com/showlotus/glm-usage"
   },
   "license": "MIT",
-  "homepage": "https://github.com/LaughSmiles/glm-key-monitor#readme",
+  "homepage": "https://github.com/showlotus/glm-usage#readme",
   "bugs": {
-    "url": "https://github.com/LaughSmiles/glm-key-monitor/issues"
+    "url": "https://github.com/showlotus/glm-usage/issues"
   },
   "keywords": [
     "GLM",
@@ -35,39 +35,38 @@
   "contributes": {
     "commands": [
       {
-        "command": "glmKeyMonitor.setKey",
-        "title": "GLM: Set API Key"
+        "command": "glmUsage.setKey",
+        "title": "GLM Usage: Set API Key"
       },
       {
-        "command": "glmKeyMonitor.refresh",
-        "title": "GLM: Refresh Usage"
+        "command": "glmUsage.refresh",
+        "title": "GLM Usage: Refresh Usage"
       },
       {
-        "command": "glmKeyMonitor.showUsageDetails",
-        "title": "GLM: Show Usage Details"
+        "command": "glmUsage.deleteKey",
+        "title": "GLM Usage: Delete API Key"
       }
     ],
     "configuration": {
-      "title": "GLM Key Monitor",
+      "title": "GLM Usage",
       "properties": {
-        "glmKeyMonitor.refreshInterval": {
+        "glmUsage.statusBarTemplate": {
+          "type": "string",
+          "default": "GLM: 每 5 小时 - ${HOURLY_PERCENT}% | 每周 - ${WEEKLY_PERCENT}%",
+          "description": "状态栏显示模板。可用变量：${HOURLY_PERCENT}、${WEEKLY_PERCENT}、${MCP_PERCENT}、${HOURLY_RESET}、${WEEKLY_RESET}、${MCP_RESET}、${HOURLY_BAR}、${WEEKLY_BAR}、${MCP_BAR}",
+          "order": 1
+        },
+        "glmUsage.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "GLM API Key（支持 Settings Sync 跨设备同步）",
+          "order": 0
+        },
+        "glmUsage.refreshInterval": {
           "type": "number",
           "default": 10,
           "minimum": 1,
           "description": "自动刷新间隔（分钟）"
-        },
-        "glmKeyMonitor.speedTestModels": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "glm-4.7",
-            "glm-5",
-            "glm-5-turbo",
-            "glm-5.1"
-          ],
-          "description": "测速模型列表（可在 Webview 中手动添加更多）"
         }
       }
     }

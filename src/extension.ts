@@ -1,31 +1,45 @@
 import * as vscode from 'vscode';
-import { getKey, setKey } from './keyStorage';
+import { getKey, setKey, deleteKey } from './keyStorage';
 import { getQuotaLimit } from './apiClient';
-import { parseQuotaStatus, QuotaStatus, formatRemainingTime } from './dataParser';
+import { parseQuotaStatus, QuotaStatus } from './dataParser';
 import { createStatusBarItem, updateStatusBar } from './statusBar';
-import { showUsageDetails } from './webviewPanel';
 
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let countdownTimer: ReturnType<typeof setInterval> | undefined;
 let isLoading = false;
 let lastQuotaStatus: QuotaStatus | null = null;
 let statusBarItem: vscode.StatusBarItem | undefined;
+let extContext: vscode.ExtensionContext | undefined;
 let refreshGeneration = 0;
 
+/** 获取状态栏模板配置 */
+function getTemplate(): string {
+    return vscode.workspace.getConfiguration('glmUsage').get<string>('statusBarTemplate', 'GLM: 5h ${HOURLY_PERCENT}% | 周 ${WEEKLY_PERCENT}%');
+}
+
+/** 使用缓存的配额数据刷新状态栏显示 */
+function renderCachedStatus(): void {
+    if (!lastQuotaStatus || !statusBarItem) {
+        return;
+    }
+    updateStatusBar(statusBarItem, { type: 'quota', status: lastQuotaStatus, template: getTemplate() });
+}
+
 export async function activate(context: vscode.ExtensionContext) {
+    extContext = context;
     statusBarItem = createStatusBarItem();
     statusBarItem.show();
     updateStatusBar(statusBarItem, { type: 'empty', message: '未设置 Key' });
     context.subscriptions.push(statusBarItem);
 
-    // Check for stored key and refresh on activation
+    // 检查已存储的 Key 并刷新
     const storedKey = await getKey(context);
     if (storedKey) {
         refreshQuota(context, statusBarItem);
     }
 
-    // Register command: Set API Key
-    const setKeyCommand = vscode.commands.registerCommand('glmKeyMonitor.setKey', async () => {
+    // 注册命令：设置 API Key
+    const setKeyCommand = vscode.commands.registerCommand('glmUsage.setKey', async () => {
         const input = await vscode.window.showInputBox({
             prompt: '请输入你的 GLM API Key',
             ignoreFocusOut: true,
@@ -39,14 +53,29 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(setKeyCommand);
 
-    // Register command: Refresh
-    const refreshCommand = vscode.commands.registerCommand('glmKeyMonitor.refresh', () => {
+    // 注册命令：刷新
+    const refreshCommand = vscode.commands.registerCommand('glmUsage.refresh', () => {
         refreshQuota(context, statusBarItem!);
     });
     context.subscriptions.push(refreshCommand);
 
-    // Register command: Clear Status (called when key is deleted)
-    const clearStatusCommand = vscode.commands.registerCommand('glmKeyMonitor.clearStatus', () => {
+    // 注册命令：删除 API Key
+    const deleteKeyCommand = vscode.commands.registerCommand('glmUsage.deleteKey', async () => {
+        const confirm = await vscode.window.showWarningMessage(
+            '确定要删除已保存的 GLM API Key 吗？',
+            { modal: true },
+            '删除'
+        );
+        if (confirm === '删除') {
+            await deleteKey(context);
+            vscode.window.showInformationMessage('GLM API Key 已删除');
+            vscode.commands.executeCommand('glmUsage.clearStatus');
+        }
+    });
+    context.subscriptions.push(deleteKeyCommand);
+
+    // 注册命令：清除状态（Key 删除时调用）
+    const clearStatusCommand = vscode.commands.registerCommand('glmUsage.clearStatus', () => {
         refreshGeneration++;
         lastQuotaStatus = null;
         isLoading = false;
@@ -56,20 +85,13 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(clearStatusCommand);
 
-    // Register command: Show Usage Details
-    const detailsCommand = vscode.commands.registerCommand('glmKeyMonitor.showUsageDetails', async () => {
-        const apiKey = await getKey(context);
-        await showUsageDetails(context, apiKey);
-    });
-    context.subscriptions.push(detailsCommand);
-
-    // Start auto-refresh timer
+    // 启动自动刷新定时器
     startRefreshTimer(context, statusBarItem);
 
-    // Start countdown timer (update status bar every 60s)
-    startCountdownTimer(statusBarItem);
+    // 启动倒计时定时器（检测窗口切换）
+    startCountdownTimer();
 
-    // Refresh on window focus
+    // 窗口聚焦时刷新
     const focusDisposable = vscode.window.onDidChangeWindowState((e) => {
         if (e.focused) {
             refreshQuota(context, statusBarItem!);
@@ -77,10 +99,16 @@ export async function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(focusDisposable);
 
-    // Restart timer on config change
+    // 配置变更监听
     const configDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('glmKeyMonitor.refreshInterval')) {
+        if (e.affectsConfiguration('glmUsage.refreshInterval')) {
             startRefreshTimer(context, statusBarItem!);
+        }
+        if (e.affectsConfiguration('glmUsage.statusBarTemplate')) {
+            renderCachedStatus();
+        }
+        if (e.affectsConfiguration('glmUsage.apiKey')) {
+            refreshQuota(context, statusBarItem!);
         }
     });
     context.subscriptions.push(configDisposable);
@@ -100,11 +128,10 @@ async function refreshQuota(context: vscode.ExtensionContext, item: vscode.Statu
 
     isLoading = true;
     const thisGeneration = refreshGeneration;
-    updateStatusBar(item, { type: 'loading' });
 
     try {
         const result = await getQuotaLimit(apiKey);
-        // 如果在请求期间 Key 被删除，丢弃旧结果
+        // 请求期间 Key 被删除，丢弃旧结果
         if (thisGeneration !== refreshGeneration) {
             return;
         }
@@ -112,7 +139,7 @@ async function refreshQuota(context: vscode.ExtensionContext, item: vscode.Statu
             const quotaStatus = parseQuotaStatus(result.data);
             if (quotaStatus) {
                 lastQuotaStatus = quotaStatus;
-                updateStatusBar(item, { type: 'quota', status: quotaStatus });
+                updateStatusBar(item, { type: 'quota', status: quotaStatus, template: getTemplate() });
             } else {
                 updateStatusBar(item, { type: 'error', message: '无配额数据' });
             }
@@ -138,20 +165,21 @@ function startRefreshTimer(context: vscode.ExtensionContext, item: vscode.Status
     if (refreshTimer) {
         clearInterval(refreshTimer);
     }
-    const interval = vscode.workspace.getConfiguration('glmKeyMonitor').get<number>('refreshInterval', 10);
+    const interval = vscode.workspace.getConfiguration('glmUsage').get<number>('refreshInterval', 10);
     const intervalMs = Math.max(interval, 1) * 60 * 1000;
     refreshTimer = setInterval(() => refreshQuota(context, item), intervalMs);
 }
 
-function startCountdownTimer(item: vscode.StatusBarItem) {
+/** 每 60s 检查窗口是否已切换并触发刷新 */
+function startCountdownTimer() {
     countdownTimer = setInterval(() => {
-        if (lastQuotaStatus && !isLoading) {
-            const { percentage, progressBar, color, nextResetTime } = lastQuotaStatus;
-            const remainingTime = formatRemainingTime(nextResetTime);
-            updateStatusBar(item, {
-                type: 'quota',
-                status: { percentage, remainingTime, progressBar, color, nextResetTime }
-            });
+        if (!lastQuotaStatus || isLoading || !extContext || !statusBarItem) {
+            return;
+        }
+        const now = Date.now();
+        // 5h 窗口已重置，触发 API 刷新获取新数据
+        if (now >= lastQuotaStatus.hourly.nextResetTime) {
+            refreshQuota(extContext, statusBarItem);
         }
     }, 60_000);
 }
