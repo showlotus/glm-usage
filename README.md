@@ -26,7 +26,7 @@ cd glm-usage
 npm install
 npm run compile
 npm run package
-code --install-extension glm-usage-0.0.2.vsix
+code --install-extension glm-usage-0.0.1.vsix
 ```
 
 或直接下载 [latest release](https://github.com/showlotus/glm-usage/releases) 的 `.vsix` 文件，在编辑器中 `Ctrl+Shift+P` → `Extensions: Install from VSIX...`。
