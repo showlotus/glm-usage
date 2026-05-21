@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getKey, setKey, deleteKey } from './keyStorage';
-import { getQuotaLimit } from './apiClient';
+import { getQuotaLimit, getModelUsage } from './apiClient';
 import { parseQuotaStatus, QuotaStatus } from './dataParser';
 import { createStatusBarItem, updateStatusBar } from './statusBar';
 
@@ -139,6 +139,8 @@ async function refreshQuota(context: vscode.ExtensionContext, item: vscode.Statu
             const quotaStatus = parseQuotaStatus(result.data);
             if (quotaStatus) {
                 lastQuotaStatus = quotaStatus;
+                // 获取 Token 用量概览（失败不影响配额展示）
+                await fetchTokenSummary(apiKey, quotaStatus);
                 updateStatusBar(item, { type: 'quota', status: quotaStatus, template: getTemplate() });
             } else {
                 updateStatusBar(item, { type: 'error', message: '无配额数据' });
@@ -192,5 +194,38 @@ export function deactivate() {
     if (countdownTimer) {
         clearInterval(countdownTimer);
         countdownTimer = undefined;
+    }
+}
+
+/** 两位数补零 */
+function pad2(n: number): string {
+    return n.toString().padStart(2, '0');
+}
+
+/** 格式化日期为 YYYY-MM-DD HH:mm:ss */
+function formatDateTime(date: Date): string {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+/** 获取 Token 用量概览并附加到 quotaStatus */
+async function fetchTokenSummary(apiKey: string, quotaStatus: import('./dataParser').QuotaStatus): Promise<void> {
+    try {
+        const now = new Date();
+        const nowStr = formatDateTime(now);
+        const todayStart = formatDateTime(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+        const sevenDaysAgo = formatDateTime(new Date(Date.now() - 7 * 86400000));
+        const thirtyDaysAgo = formatDateTime(new Date(Date.now() - 30 * 86400000));
+
+        const [todayUsage, last7dUsage, last30dUsage] = await Promise.all([
+            getModelUsage(apiKey, todayStart, nowStr),
+            getModelUsage(apiKey, sevenDaysAgo, nowStr),
+            getModelUsage(apiKey, thirtyDaysAgo, nowStr),
+        ]);
+
+        quotaStatus.todayTokens = todayUsage.data?.totalUsage.totalTokensUsage;
+        quotaStatus.last7dTokens = last7dUsage.data?.totalUsage.totalTokensUsage;
+        quotaStatus.last30dTokens = last30dUsage.data?.totalUsage.totalTokensUsage;
+    } catch {
+        // Token 用量获取失败不影响配额展示
     }
 }

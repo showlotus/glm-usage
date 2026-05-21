@@ -2,7 +2,7 @@
   "name": "glm-token-usage",
   "displayName": "GLM Token Usage",
   "description": "监控智谱 AI (BigModel) API Key 的使用量，在状态栏显示 Token 剩余百分比和重置时间",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "showlotus",
   "icon": "icon.png",
   "repository": {

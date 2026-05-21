@@ -12,6 +12,12 @@ export interface QuotaStatus {
     hourly: WindowQuota;
     weekly: WindowQuota;
     mcp: WindowQuota;
+    /** 今日 Token 用量 */
+    todayTokens?: number;
+    /** 最近 7 天 Token 用量 */
+    last7dTokens?: number;
+    /** 最近 30 天 Token 用量 */
+    last30dTokens?: number;
 }
 
 /** 从 API 返回的 limits 中提取完整配额状态 */

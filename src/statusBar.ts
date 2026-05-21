@@ -26,6 +26,13 @@ export function createStatusBarItem(): vscode.StatusBarItem {
   return item
 }
 
+/** 格式化 Token 数量，大数字使用中文单位 */
+function formatTokens(num: number): string {
+  if (num >= 100000000) { return `${(num / 100000000).toFixed(1)} 亿`; }
+  if (num >= 10000) { return `${(num / 10000).toFixed(1)} 万`; }
+  return num.toLocaleString('en-US');
+}
+
 /** 生成字符进度条，已使用 █ 未使用 ░ */
 function textBar(percentage: number, width: number = 30): string {
   if (percentage < 0) return ''
@@ -45,6 +52,15 @@ function buildTooltip(status: QuotaStatus): vscode.MarkdownString {
 
   md.appendMarkdown(`\n\n**GLM Usage**\n\n`)
   // md.appendMarkdown(`Level: ${status.level.replace(/(^.)/, $0 => $0.toUpperCase())}`)
+
+  // Token 用量概览
+  if (status.todayTokens !== undefined || status.last7dTokens !== undefined || status.last30dTokens !== undefined) {
+    md.appendMarkdown('---\n\n')
+    md.appendMarkdown('**Token 用量概览**\n\n')
+    if (status.todayTokens !== undefined) { md.appendMarkdown(`当日: **${formatTokens(status.todayTokens)}** Tokens\n\n`); }
+    if (status.last7dTokens !== undefined) { md.appendMarkdown(`近 7 天: **${formatTokens(status.last7dTokens)}** Tokens\n\n`); }
+    if (status.last30dTokens !== undefined) { md.appendMarkdown(`近 30 天: **${formatTokens(status.last30dTokens)}** Tokens\n\n`); }
+  }
 
   // 卡片 1: 每 5 小时
   md.appendMarkdown('---\n\n')
