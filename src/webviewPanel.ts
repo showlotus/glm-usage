@@ -14,6 +14,13 @@ let isSpeedTesting = false;
 let speedTestProgress = { current: 0, total: 0, model: '', promptName: '' };
 
 interface ModelConfig { name: string; selected: boolean; }
+
+/** Token 用量概览（今日 / 7 天 / 30 天） */
+interface TokenSummary {
+    today: number;
+    last7d: number;
+    last30d: number;
+}
 const SPEED_MODELS_KEY = 'glm-speed-test-models';
 let speedTestModels: ModelConfig[] = [];
 
@@ -202,14 +209,29 @@ async function loadUsageData(apiKey: string, timeRange: number = 24): Promise<vo
         const endTime = formatDateTime(new Date());
         const startTime = formatDateTime(new Date(Date.now() - timeRange * 60 * 60 * 1000));
 
-        const [quotaResult, modelResult, toolResult] = await Promise.all([
+        // 概览卡片的时间范围
+        const nowStr = formatDateTime(new Date());
+        const todayStart = getTodayStart();
+        const sevenDaysAgo = formatDateTime(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+        const thirtyDaysAgo = formatDateTime(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+
+        const [quotaResult, modelResult, toolResult, todayUsage, last7dUsage, last30dUsage] = await Promise.all([
             getQuotaLimit(apiKey),
             getModelUsage(apiKey, startTime, endTime),
-            getToolUsage(apiKey, startTime, endTime)
+            getToolUsage(apiKey, startTime, endTime),
+            getModelUsage(apiKey, todayStart, nowStr),
+            getModelUsage(apiKey, sevenDaysAgo, nowStr),
+            getModelUsage(apiKey, thirtyDaysAgo, nowStr)
         ]);
 
+        const tokenSummary: TokenSummary = {
+            today: todayUsage.code === 200 && todayUsage.data ? todayUsage.data.totalUsage.totalTokensUsage : -1,
+            last7d: last7dUsage.code === 200 && last7dUsage.data ? last7dUsage.data.totalUsage.totalTokensUsage : -1,
+            last30d: last30dUsage.code === 200 && last30dUsage.data ? last30dUsage.data.totalUsage.totalTokensUsage : -1,
+        };
+
         if (currentPanel) {
-            currentPanel.webview.html = generateReportHtml(quotaResult, modelResult, toolResult, currentInterval, timeRange);
+            currentPanel.webview.html = generateReportHtml(quotaResult, modelResult, toolResult, currentInterval, timeRange, tokenSummary);
         }
     } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error';
@@ -302,6 +324,11 @@ function getCommonStyles(): string {
   .speed-results { margin-top:12px; }
   .speed-summary td, .speed-summary th { font-size:13px; }
   .fastest { color:#4EC9B0; font-weight:bold; }
+  .summary-cards { display:flex; gap:12px; margin-top:8px; }
+  .summary-card { flex:1; text-align:center; padding:12px 8px; border:1px solid var(--vscode-panel-border); border-radius:6px; background:var(--vscode-editor-background); }
+  .summary-label { font-size:13px; color:var(--vscode-descriptionForeground); margin-bottom:4px; }
+  .summary-value { font-size:22px; font-weight:bold; }
+  .summary-unit { font-size:12px; color:var(--vscode-descriptionForeground); margin-top:2px; }
 `;
 }
 
@@ -474,9 +501,31 @@ function generateReportHtml(
     model: { code: number; msg?: string; data?: any },
     tool: { code: number; msg?: string; data?: any },
     currentInterval: number = 10,
-    timeRange: number = 24
+    timeRange: number = 24,
+    tokenSummary?: TokenSummary
 ): string {
     let html = `<h1>GLM API 使用量报告</h1>`;
+
+    // Token 用量概览卡片
+    if (tokenSummary) {
+        html += `<div class="section token-summary">`;
+        html += `<h2>📊 Token 用量概览</h2>`;
+        html += `<div class="summary-cards">`;
+        const summaryItems = [
+            { label: '今日', value: tokenSummary.today },
+            { label: '最近 7 天', value: tokenSummary.last7d },
+            { label: '最近 30 天', value: tokenSummary.last30d },
+        ];
+        for (const item of summaryItems) {
+            const displayValue = item.value >= 0 ? formatNumber(item.value) : '--';
+            html += `<div class="summary-card">
+                <div class="summary-label">${item.label}</div>
+                <div class="summary-value">${displayValue}</div>
+                <div class="summary-unit">Tokens</div>
+            </div>`;
+        }
+        html += `</div></div>`;
+    }
 
     // Quota section
     if (quota.code === 200 && quota.data) {
@@ -646,7 +695,18 @@ function buildSpeedResultsHtml(results: SpeedTestResult[]): string {
     return html;
 }
 
+/** 两位数补零 */
+function pad2(n: number): string {
+    return n.toString().padStart(2, '0');
+}
+
+/** 格式化日期为 YYYY-MM-DD HH:mm:ss */
 function formatDateTime(date: Date): string {
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+/** 获取今日零点的时间字符串 */
+function getTodayStart(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} 00:00:00`;
 }
